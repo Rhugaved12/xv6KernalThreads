@@ -88,6 +88,8 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  // Rhugaved changes
+  p->is_thread = 0;     //In the beginning of the process, make the is_thread as 0 to show that it's a process
 
   release(&ptable.lock);
 
@@ -199,6 +201,8 @@ fork(void)
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
+  //Rhugaved edit 
+  np->is_thread = 0;        //As it fork, we need to have the flag show that it's a prcess not a thread
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
