@@ -225,6 +225,73 @@ fork(void)
   return pid;
 }
 
+int
+clone(void* fcn, void* arg, void* stack_add)
+{
+  int i, pid;
+  struct proc *newthread;
+  struct proc *curproc = myproc();
+  uint temp;
+
+  // Allocate process.
+  if((newthread = allocproc()) == 0){
+    return -1;
+  }
+
+  // Copy process pg dic from proc.
+  newthread->thread_stack = stack_add;
+  newthread->pgdir = curproc->pgdir;
+  // if((newthread->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+  //   kfree(newthread->kstack);
+  //   newthread->kstack = 0;
+  //   newthread->state = UNUSED;
+  //   return -1;
+  // }
+
+  // Point to the main thread/main process if the caller is a thread
+  if (curproc->is_thread)
+    curproc =  curproc->parent;
+  
+  newthread->sz = curproc->sz;
+  newthread->parent = curproc;
+  *newthread->tf = *curproc->tf;
+  newthread->is_thread = 1;
+
+  // Clear %eax so that clone returns 0 in the child.
+  newthread->tf->eax = 0;
+
+  for(i = 0; i < NOFILE; i++)
+    if(curproc->ofile[i])
+      newthread->ofile[i] = filedup(curproc->ofile[i]);
+  newthread->cwd = idup(curproc->cwd);
+
+  safestrcpy(newthread->name, curproc->name, sizeof(curproc->name));
+
+  pid = newthread->pid;
+
+  // Set temp to stack top first and then sub 8 to push arg and return add(fake ret) above it.
+  temp = (uint)stack_add + PGSIZE - 8;
+  uint arr[2];
+  arr[0] = (uint)arg;
+  arr[1] = (uint)0xffffffff;
+  copyout(newthread->pgdir, temp, arr, 8);
+  newthread->context->ebp = temp;
+  newthread->context->eip =  fcn;
+  newthread->tf->ebp = temp;
+  newthread->tf->eip = fcn;
+  newthread->tf->esp = temp;
+
+  acquire(&ptable.lock);
+
+  newthread->state = RUNNABLE;
+
+  release(&ptable.lock);
+
+  return pid;
+}
+
+
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.

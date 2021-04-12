@@ -52,6 +52,8 @@ struct proc {
    // Rhugaved Edit begins
   void *thread_stack ;         // Pointer to a stack for thread
   int is_thread;               // To distinguish between a process and a thread
+  // struct proc child;                    // Parent Pointer
+  // struct proc parent;                   // Child Pointer
 };
 
 // Process memory is laid out contiguously, low addresses first:
