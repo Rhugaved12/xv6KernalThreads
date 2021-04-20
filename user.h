@@ -38,3 +38,4 @@ void* malloc(uint);
 void free(void*);
 int atoi(const char*);
 int clone(void*, void*, void*);
+int join(int);
