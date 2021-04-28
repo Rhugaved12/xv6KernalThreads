@@ -442,31 +442,3 @@ sys_pipe(void)
   fd[1] = fd1;
   return 0;
 }
-
-int
-sys_clone(void){
-  // cprintf("Clone\n");
-  char* fcn, args, stack, ret;
-  if(arptr(0, &fcn, sizeof(char *)) < 0)
-    return -1;
-  if(arptr(1, &args, sizeof(char *)) < 0)
-    return -1;
-  if(arptr(2, &stack, sizeof(char *)) < 0)
-    return -1;
-
-  if((ret = clone(fcn, args, stack)) < 0) {
-    return -1;
-  }
-  else
-    return ret;
-  return 0;
-}
-
-
-int
-sys_join(void){
-  int pid;
-  if(argint(0, &pid) < 0)
-    return -1;
-  return join(pid);
-}

@@ -40,7 +40,7 @@ struct proc {
   pde_t* pgdir;                // Page table
   char *kstack;                // Bottom of kernel stack for this process
   enum procstate state;        // Process state
-  int pid;                     // Process ID
+  int pid;                     // Process ID or Thread Group ID
   struct proc *parent;         // Parent process
   struct trapframe *tf;        // Trap frame for current syscall
   struct context *context;     // swtch() here to run process
@@ -49,11 +49,17 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-   // Rhugaved Edit begins
+  // Rhugaved Edit begins
   void *thread_stack ;         // Pointer to a stack for thread
   int is_thread;               // To distinguish between a process and a thread
-  // struct proc child;                    // Parent Pointer
-  // struct proc parent;                   // Child Pointer
+  // int tid;                     // Thread ID
+  int tgid;                    // Thread Group ID
+  struct proc *pthread;        // parent thread pointer
+  int CLONE_FILES;
+  int CLONE_FS;
+  int CLONE_PARENT;
+  int CLONE_VM;
+  int CLONE_THREAD;
 };
 
 // Process memory is laid out contiguously, low addresses first:

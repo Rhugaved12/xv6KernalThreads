@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#define PGSIZE 4096
 
 struct {
   struct spinlock lock;
@@ -15,6 +16,8 @@ struct {
 static struct proc *initproc;
 
 int nextpid = 1;
+//Rhugaved Edits
+// int nexttid = 1;
 extern void forkret(void);
 extern void trapret(void);
 
@@ -162,6 +165,8 @@ growproc(int n)
 {
   uint sz;
   struct proc *curproc = myproc();
+  // Rhugaved changes
+  struct proc *p;
 
   sz = curproc->sz;
   if(n > 0){
@@ -171,6 +176,14 @@ growproc(int n)
     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   }
+
+  //Rhugaved Changes
+  for(p = ptable.proc; p<&ptable.proc[NPROC]; p++){
+    if(p->pthread == curproc){
+      p->sz = sz;
+    }
+  }
+
   curproc->sz = sz;
   switchuvm(curproc);
   return 0;
@@ -203,6 +216,7 @@ fork(void)
   *np->tf = *curproc->tf;
   //Rhugaved edit 
   np->is_thread = 0;        //As it fork, we need to have the flag show that it's a prcess not a thread
+  np->tgid = np->pid;       // Used in thread groups
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -226,21 +240,75 @@ fork(void)
 }
 
 int
-clone(void* fcn, void* arg, void* stack_add)
+clone(void(*fcn)(void*), void* arg, void* stack_add, int flags)
 {
+  cprintf("Clone SYSTEM CALL");
   int i, pid;
   struct proc *newthread;
+  // curproc is the proc/thread that calls clone
   struct proc *curproc = myproc();
-  uint temp;
-
+  uint temp; 
   // Allocate process.
   if((newthread = allocproc()) == 0){
     return -1;
   }
 
-  // Copy process pg dic from proc.
+   // Checking the flags
+  if (flags & (1 << (1 - 1)))
+    newthread->CLONE_FILES = 1;
+  else
+    newthread->CLONE_FILES = 0;
+  if (flags & (1 << (2 - 1)))
+    newthread->CLONE_FS = 1;
+  else
+    newthread->CLONE_FS = 0;
+  if (flags & (1 << (3 - 1)))
+    newthread->CLONE_PARENT = 1;
+  else
+    newthread->CLONE_PARENT = 0;
+  if (flags & (1 << (4 - 1)))
+    newthread->CLONE_VM = 1;
+  else
+    newthread->CLONE_VM = 0;
+  if (flags & (1 << (5 - 1)))
+    newthread->CLONE_THREAD = 1;
+  else
+    newthread->CLONE_THREAD = 0;
+
+  // parent here is the group leader aka main process
+  // Handling CLONE_PARENT
+  if(curproc->is_thread == 0){
+    if(newthread->CLONE_PARENT == 1)
+      newthread->parent = curproc->parent;
+    else
+      newthread->parent = curproc;
+  }
+  else{
+    if(newthread->CLONE_PARENT == 1)
+      newthread->parent = curproc->parent->parent
+    else
+      newthread->parent = curproc->parent;
+  }
+  cprintf("Clone end-4");
+
   newthread->thread_stack = stack_add;
-  newthread->pgdir = curproc->pgdir;
+
+  // Copy process pg dic from proc.
+  // Handling CLONE_VM
+  if (newthread->CLONE_VM == 1){
+    newthread->pgdir = curproc->pgdir;
+  }
+  else{
+    // Copy process state from proc.
+    if((newthread->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+      kfree(newthread->kstack);
+      newthread->kstack = 0;
+      newthread->state = UNUSED;
+      return -1;
+    }
+  }
+  // Immediate parent of the thread
+  newthread->pthread = curproc;
   // if((newthread->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
   //   kfree(newthread->kstack);
   //   newthread->kstack = 0;
@@ -249,43 +317,69 @@ clone(void* fcn, void* arg, void* stack_add)
   // }
 
   // Point to the main thread/main process if the caller is a thread
-  if (curproc->is_thread)
-    curproc =  curproc->parent;
+  // if (curproc->is_thread)
+  //   curproc =  curproc->parent;
   
   newthread->sz = curproc->sz;
-  newthread->parent = curproc;
+  // newthread->parent = curproc;
   *newthread->tf = *curproc->tf;
   newthread->is_thread = 1;
 
   // Clear %eax so that clone returns 0 in the child.
   newthread->tf->eax = 0;
+  cprintf("Clone end-3");
 
-  for(i = 0; i < NOFILE; i++)
-    if(curproc->ofile[i])
-      newthread->ofile[i] = filedup(curproc->ofile[i]);
-  newthread->cwd = idup(curproc->cwd);
+  // Handling CLONE_FILES
+  if (newthread->CLONE_FILES == 0){
+    for(i = 0; i < NOFILE; i++)
+      if(curproc->ofile[i])
+        newthread->ofile[i] = filedup(curproc->ofile[i]);
+  }
+  else{
+    for(i = 0; i < NOFILE; i++)
+      if(curproc->ofile[i])
+        newthread->ofile[i] = curproc->ofile[i];
+  }
+
+  // Handling CLONE_FS
+  if (newthread->CLONE_FS == 0)
+    newthread->cwd = idup(curproc->cwd);
+  else
+    newthread->cwd = curproc->cwd;
 
   safestrcpy(newthread->name, curproc->name, sizeof(curproc->name));
 
+// Handling IDs
   pid = newthread->pid;
+  // newthread->tid = nexttid++;
+  // For threads, the pid will work as tid
+  if (newthread->CLONE_THREAD == 1){
+    newthread->tgid = curproc->tgid;
+  }
+  else{
+    newthread->tgid = newthread->pid;
+  }
 
   // Set temp to stack top first and then sub 8 to push arg and return add(fake ret) above it.
   temp = (uint)stack_add + PGSIZE - 8;
   uint arr[2];
-  arr[0] = (uint)arg;
-  arr[1] = (uint)0xffffffff;
+  arr[1] = (uint)arg;
+  arr[0] = (uint)0xffffffff;
   copyout(newthread->pgdir, temp, arr, 8);
-  newthread->context->ebp = temp;
-  newthread->context->eip =  fcn;
+  // newthread->context->ebp = (uint)temp;
+  // newthread->context->eip =  (uint)fcn;
   newthread->tf->ebp = temp;
-  newthread->tf->eip = fcn;
+  newthread->tf->eip = (uint)fcn;
   newthread->tf->esp = temp;
+  cprintf("Clone End-1");
 
   acquire(&ptable.lock);
 
   newthread->state = RUNNABLE;
 
   release(&ptable.lock);
+  cprintf("Clone End");
+  cprintf("EIP: %d", (uint)fcn);
 
   return pid;
 }
@@ -306,10 +400,14 @@ exit(void)
     panic("init exiting");
 
   // Close all open files.
-  for(fd = 0; fd < NOFILE; fd++){
-    if(curproc->ofile[fd]){
-      fileclose(curproc->ofile[fd]);
-      curproc->ofile[fd] = 0;
+  // RHugaved Edit begins
+  // But only for processes not for threads
+  if(curproc->is_thread == 0){
+    for(fd = 0; fd < NOFILE; fd++){
+      if(curproc->ofile[fd]){
+        fileclose(curproc->ofile[fd]);
+        curproc->ofile[fd] = 0;
+      }
     }
   }
 
@@ -325,14 +423,25 @@ exit(void)
 
   // Pass abandoned children to init.
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->parent == curproc){
+    // Rhugaved edits
+    // Do below only for processes
+    if(p->parent == curproc && curproc->is_thread == 0){
       p->parent = initproc;
       if(p->state == ZOMBIE)
         wakeup1(initproc);
     }
   }
+  // For threads, don't kill any child threads
+    if(curproc->is_thread == 1){
+      wakeup1(curproc->parent);
+    }
+    // If the process has child threads, then kill all threads
+    else{
+      // kill all threads children
+      tkill(curproc->pid);
+    }
 
-  // Jump into the scheduler, never to return.
+  // Jump into the scheduler,  never to return.
   curproc->state = ZOMBIE;
   sched();
   panic("zombie exit");
@@ -355,8 +464,13 @@ wait(void)
       if(p->parent != curproc)
         continue;
       // Rhugaved changes
-      if(p->is_thread)
+      if(p->is_thread == 1)
         continue;
+
+      // For thread group members forked process
+      if(curproc->is_thread == 1)
+        if(p->parent->tgid != curproc->tgid)
+          continue;
 
       havekids = 1;
       if(p->state == ZOMBIE){
@@ -366,6 +480,7 @@ wait(void)
         p->kstack = 0;
         freevm(p->pgdir);
         p->pid = 0;
+        p->tgid = 0;
         p->parent = 0;
         p->name[0] = 0;
         p->killed = 0;
@@ -387,7 +502,7 @@ wait(void)
 }
 
 // Rhugaved Edit begins:
-//Join for threading
+// Join for threading
 int
 join(int pid)
 {
@@ -401,22 +516,32 @@ join(int pid)
     // Scan through table looking for exited children.
     havekids = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->parent != curproc)
-        continue;
-      if(p->pid != pid)
-        continue;
-      if(p->parent != curproc || p->is_thread == 0) {
-        release(&ptable.lock);
-        return -1;
+      // If a thread has called fork and clone, then for forked: p->parent == curproc,
+      // but for fork, we should use wait. So, we skip that p and loop again to
+      // try and find the thread.
+      if(p->is_thread == 0) 
+        continue
+
+      if(curproc->isthread == 1) {
+        if(p->parent != curproc->parent) 
+          continue;
+      } 
+      else {
+        if(p->parent != curproc)
+          continue;
       }
 
+      if(p->pid != pid)
+        continue;
+      
       havekids = 1;
       if(p->state == ZOMBIE){
         // Found one.
         return_pid = p->pid;
         kfree(p->kstack);
         p->kstack = 0;
-        // freevm(p->pgdir);
+        if (p->CLONE_VM == 0)
+          freevm(p->pgdir);
         p->pid = 0;
         p->parent = 0;
         p->name[0] = 0;
@@ -620,6 +745,25 @@ kill(int pid)
     }
   }
   release(&ptable.lock);
+  return -1;
+}
+
+// Kill all the child threads of the parent_process_pid
+int
+tkill(int parent_process_pid)
+{
+  struct proc *p;
+
+  // acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if((p->is_thread == 1) && (p->parent->pid == parent_process_pid)){
+      p->killed = 1;
+      // Wake process from sleep if necessary.
+      if(p->state == SLEEPING)
+        p->state = RUNNABLE;
+    }
+  }
+  // release(&ptable.lock);
   return -1;
 }
 
