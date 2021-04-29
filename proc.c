@@ -17,6 +17,8 @@ static struct proc *initproc;
 
 int nextpid = 1;
 //Rhugaved Edits
+int
+tkill_children(int);
 // int nexttid = 1;
 extern void forkret(void);
 extern void trapret(void);
@@ -178,6 +180,8 @@ growproc(int n)
   }
 
   //Rhugaved Changes
+  // Change the size variable of all children threads
+  // depending upon the flags
   for(p = ptable.proc; p<&ptable.proc[NPROC]; p++){
     if(p->pthread == curproc){
       p->sz = sz;
@@ -242,7 +246,8 @@ fork(void)
 int
 clone(void(*fcn)(void*), void* arg, void* stack_add, int flags)
 {
-  cprintf("Clone SYSTEM CALL");
+  // cprintf("%d:Clone SYSTEM CALL", flags);
+  // flags = 24;
   int i, pid;
   struct proc *newthread;
   // curproc is the proc/thread that calls clone
@@ -285,11 +290,11 @@ clone(void(*fcn)(void*), void* arg, void* stack_add, int flags)
   }
   else{
     if(newthread->CLONE_PARENT == 1)
-      newthread->parent = curproc->parent->parent
+      newthread->parent = curproc->parent->parent;
     else
       newthread->parent = curproc->parent;
   }
-  cprintf("Clone end-4");
+  // cprintf("Clone end-4");
 
   newthread->thread_stack = stack_add;
 
@@ -327,7 +332,7 @@ clone(void(*fcn)(void*), void* arg, void* stack_add, int flags)
 
   // Clear %eax so that clone returns 0 in the child.
   newthread->tf->eax = 0;
-  cprintf("Clone end-3");
+  // cprintf("Clone end-3");
 
   // Handling CLONE_FILES
   if (newthread->CLONE_FILES == 0){
@@ -336,6 +341,7 @@ clone(void(*fcn)(void*), void* arg, void* stack_add, int flags)
         newthread->ofile[i] = filedup(curproc->ofile[i]);
   }
   else{
+    // newthread->ofile = curproc->ofile;
     for(i = 0; i < NOFILE; i++)
       if(curproc->ofile[i])
         newthread->ofile[i] = curproc->ofile[i];
@@ -371,15 +377,15 @@ clone(void(*fcn)(void*), void* arg, void* stack_add, int flags)
   newthread->tf->ebp = temp;
   newthread->tf->eip = (uint)fcn;
   newthread->tf->esp = temp;
-  cprintf("Clone End-1");
+  // cprintf("Clone End-1");
 
   acquire(&ptable.lock);
 
   newthread->state = RUNNABLE;
 
   release(&ptable.lock);
-  cprintf("Clone End");
-  cprintf("EIP: %d", (uint)fcn);
+  // cprintf("Clone End");
+  // cprintf("EIP: %d", (uint)fcn);
 
   return pid;
 }
@@ -438,7 +444,7 @@ exit(void)
     // If the process has child threads, then kill all threads
     else{
       // kill all threads children
-      tkill(curproc->pid);
+      tkill_children(curproc->pid);
     }
 
   // Jump into the scheduler,  never to return.
@@ -516,23 +522,51 @@ join(int pid)
     // Scan through table looking for exited children.
     havekids = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+
+      if (p->pid == pid){
+        if(curproc->is_thread == 1) {
+          if(p->parent != curproc->parent) {
+            release(&ptable.lock);
+            return -1;
+          }
+        } 
+        else {
+          if(p->parent != curproc){
+            release(&ptable.lock);
+            return -1;
+          }
+        }
+        if(p->is_thread == 0 ){
+          release(&ptable.lock);
+          return -1;
+        }
+      }
+      else{
+        continue;
+      }
       // If a thread has called fork and clone, then for forked: p->parent == curproc,
       // but for fork, we should use wait. So, we skip that p and loop again to
       // try and find the thread.
-      if(p->is_thread == 0) 
-        continue
+      // if(p->is_thread == 0) 
+      //   continue;
 
-      if(curproc->isthread == 1) {
-        if(p->parent != curproc->parent) 
-          continue;
-      } 
-      else {
-        if(p->parent != curproc)
-          continue;
-      }
+      // if(curproc->is_thread == 1) {
+      //   if(p->parent != curproc->parent) 
+      //     continue;
+      // } 
+      // else {
+      //   if(p->parent != curproc)
+      //     continue;
+      // }
 
-      if(p->pid != pid)
-        continue;
+      // if(p->pid != pid)
+      //   continue;
+      
+      // if (p->pid == pid){
+      //   if (p->parent!= curproc->parent || p->isThread == 0 ){
+      //     release(&ptable.lock);
+      //     return -1;
+      //   }
       
       havekids = 1;
       if(p->state == ZOMBIE){
@@ -737,6 +771,10 @@ kill(int pid)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
       p->killed = 1;
+      // Rhugaved Edits
+      // Kill all the children threads for the process
+      if(p->is_thread == 0)
+        tkill_children(pid);
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
@@ -748,9 +786,29 @@ kill(int pid)
   return -1;
 }
 
+// Kill a particular thread given the tid(pid) of the thread
+// and the tgid
+int
+tkill(int tgid, int tid, int sig){
+  struct proc *p;
+
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == tid && p->is_thread == 1 && p->tgid == tgid){
+      p->killed = 1;
+      // Wake process from sleep if necessary.
+      if(p->state == SLEEPING)
+        p->state = RUNNABLE;
+      release(&ptable.lock);
+      return 0;
+    }
+  }
+  release(&ptable.lock);
+  return -1;
+}
 // Kill all the child threads of the parent_process_pid
 int
-tkill(int parent_process_pid)
+tkill_children(int parent_process_pid)
 {
   struct proc *p;
 

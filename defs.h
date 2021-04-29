@@ -120,9 +120,9 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
-int             clone(void(*fcn)(void*), void* arg, void* stack);
+int             clone(void(*fcn)(void*), void* arg, void* stack, int flags);
 int             join(int);
-int             tkill(int);
+int             tkill(int, int, int);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

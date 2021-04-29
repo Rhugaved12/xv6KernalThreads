@@ -58,35 +58,39 @@
 volatile int globalCounter = 0;
 
 void addToCounter(){
+  printf(1, "#\n");
   globalCounter++;
-  printf(1, "counter is: %x\n", globalCounter);
+  // printf(1, "counter is: %x\n", globalCounter);
   exit();
 }
 
 int
 main(int argc, char *argv[])
 {
- int pid;
+//  int pid;
  void * stack[10];
+ int pid[10];
 
- printf(1, "Running testUserCalls:\n");
+//  printf(1, "Running testUserCalls:\n");
  globalCounter++;
- printf(1, "before cloning counter is: %x\n", globalCounter);
+//  printf(1, "before cloning counter is: %x\n", globalCounter);
 
  int x;
  for(x=0; x<10; x++){
    stack[x] = malloc(4096);
-   pid = clone((void *) &addToCounter, (void *) &globalCounter, (void *) stack[x]);
-   printf(1, "user pid: %d\n", pid);
+   pid[x] = clone((void *) &addToCounter, (void *) &globalCounter, (void *) stack[x], 0);
+   printf(1, "user pid[x]: %d\n", pid[x]);
  }
 
  for(x=0; x<10; x++){
-   printf(1, "join pid %d\n", join(pid));
+   int p;
+   p = join(pid[x]);
+   printf(1, "join pid[x] %d\n", p);
  }
 
 
  globalCounter++;
- printf(1, "joined\n");
+//  printf(1, "joined\n");
 
  printf(1, "The globalCounter should be 12 : and it is = %d\n", globalCounter);
  exit();

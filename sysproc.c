@@ -39,6 +39,18 @@ sys_kill(void)
 int
 sys_getpid(void)
 {
+  return myproc()->tgid;
+}
+
+int
+sys_getppid(void)
+{
+  return myproc()->parent->pid;
+}
+
+int
+sys_gettid(void)
+{
   return myproc()->pid;
 }
 
@@ -94,14 +106,17 @@ int
 sys_clone(void){
   // cprintf("Clone\n");
   char* fcn, *args, *stack, ret;
+  int flags;
   if(argptr(0, &fcn, sizeof(char *)) < 0)
     return -1;
   if(argptr(1, &args, sizeof(char *)) < 0)
     return -1;
   if(argptr(2, &stack, sizeof(char *)) < 0)
     return -1;
-
-  if((ret = clone((void *)fcn, (void *)args, (void *)stack)) < 0) {
+  if(argint(3, &flags) < 0)
+    return -1;
+  // cprintf("Flags: %d", flags);
+  if((ret = clone((void *)fcn, (void *)args, (void *)stack, flags)) < 0) {
     return -1;
   }
   else
@@ -120,8 +135,12 @@ sys_join(void){
 
 int
 sys_tkill(void){
-  int pid;
-  if(argint(0, &pid) < 0)
+  int tgid, tid, sig;
+  if(argint(0, &tgid) < 0)
     return -1;
-  return tkill(pid);
+  if(argint(1, &tid) < 0)
+    return -1;
+  if(argint(2, &sig) < 0)
+    return -1;
+  return tkill(tgid, tid, sig);
 }
