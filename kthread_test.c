@@ -172,32 +172,6 @@ void child_kill_test(){
 }
 
 
-//RACE TEST
-// Threads are racing to increment a single integer
-void race_test_fcn(void*a){
-
-    int *value = (int*)a;
-    for(int i = 0; i < 10;i++){
-
-        *value += 1;
-    }
-    exit();
-}
-
-void race_test(){
-    THREAD thread[100];
-    int value = 0;
-    for(int i = 0; i < 100; i++){
-        thread[i] = create_thread(race_test_fcn,(void*)&value, CLONE_VM );
-        join_threads(thread[i]);
-    }
-    if(value != 100*10){
-        printf(1,"\nrace_test failed\n");
-    }else{
-        printf(1,"\nrace_test passed\n\n");
-    }
-}
-
 void second_thread(void* arg){
     printf(1,"\nThread in Thread Passed\n");
     exit();
@@ -221,46 +195,6 @@ void one_thread_calling_another(){
     join_threads(thread);
     
 }
-
-
-//JOIN WAIT TEST
-void wait_and_join_fcn(void *a){
-    int val = (int)a;
-    sleep(val);
-    exit();
-}
-void wait_and_join(){
-    
-    THREAD thread[2];
-    int val1 = 5, val2 = 2;
-    // Call fork
-    int tgid = fork();
-    // Go in child
-    if(!tgid){
-      // create theads
-        thread[0] = create_thread(wait_and_join_fcn, (void*)val1, CLONE_VM);
-        // Create another thread
-        thread[1] = create_thread(wait_and_join_fcn, (void*)val2, CLONE_VM);
-        // Call join for all
-        int ans1 = join_threads(thread[0]);
-
-        int ans2 = join_threads(thread[1]);
-
-        if(ans1 != thread[0].pid || ans2 != thread[1].pid){
-            printf(1,"\nwait_and_join Test Failed.\n");
-        }else{
-            printf(1,"\nwait_and_join Test Passed\n");
-        }
-        exit();  
-    }
-
-    int ans;
-    while((ans = wait()) != -1);
-    exit();
-}
-
-
-
 
 
 // Global variable
@@ -515,17 +449,21 @@ chdir("..");
 }
 
 void stress_test_fcn(void* i){
-  printf(1, "%d", (int)i++);
+  // printf(1, "%d", (int)i++);
   exit();
 }
 void stress_test(){
   THREAD t;
-  // printf(1, "\nStress Testing:\n");
+  printf(1, "\nStress Testing:\n");
   // After running some stress tests it was found that after 39 iterations
   // the kernal would stop working
-  for(int i = 0; i < 39;){
+  for(int i = 0; ;){
     t = create_thread(stress_test_fcn, (void*)i, 0);
-    join_threads(t);
+    // join_threads(t);
+    if(t.pid == -1)
+      break;
+    printf(1, "%d", i);
+
     i++;
   }
   sleep(20);
@@ -659,15 +597,12 @@ int main(int argc, char *argv[])
     joinordertest();
     child_kill_test();
     one_thread_calling_another();
-    // wait_and_join();
-    race_test();
     matrix_multiplication();
     
     test_pass_string_arg();
 
 
     forkinThread();
-
 
     stress_test();
     sleep(20);
