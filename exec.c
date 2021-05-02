@@ -7,19 +7,66 @@
 #include "x86.h"
 #include "elf.h"
 
+// struct {
+//   struct proc proc[NPROC];
+// } ptable;
+
 int
 exec(char *path, char **argv)
 {
   char *s, *last;
-  int i, off;
+  int i, j, off;
   uint argc, sz, sp, ustack[3+MAXARG+1];
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
   struct proc *curproc = myproc();
+  // struct proc *p;
 
   begin_op();
+
+
+
+
+  for(i = 0; i < NPROC; i++) {
+    if(curproc->clone_file_share[i] != 0) {
+      for(j = 0; j < NPROC; j++) {
+        if((curproc->clone_file_share[i])->clone_file_share[j] == curproc) {
+          (curproc->clone_file_share[i])->clone_file_share[j] = 0;
+          break;
+        }
+      }
+      curproc->clone_file_share[i] = 0;
+    }
+  }
+  // // If curproc is a thread, we need to kill all other threads in the group
+  // if(curproc->is_thread == 1){
+  //   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+  //     if(curproc->tgid == p->tgid && p->is_thread == 1){
+  //       if(p->pid == curproc->pid)
+  //         ;
+
+  //       // if(p->tgid == p->pid){
+  //       //   curproc = p;
+  //       // }
+  //       else{
+  //         tkill(p->tgid, p->pid, 1);
+  //       }
+  //     }
+  //   }
+  // }
+  for(i = 0; i < NPROC; i++) {
+    if(curproc->clone_fs_share[i] != 0) {
+      for(j = 0; j < NPROC; j++) {
+        if((curproc->clone_fs_share[i])->clone_fs_share[j] == curproc) {
+          (curproc->clone_fs_share[i])->clone_fs_share[j] = 0;
+          break;
+        }
+      }
+      curproc->clone_fs_share[i] = 0;
+    }
+  }
 
   if((ip = namei(path)) == 0){
     end_op();

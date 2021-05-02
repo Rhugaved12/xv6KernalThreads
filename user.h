@@ -28,6 +28,7 @@ int join(int);
 int tkill(int, int, int);
 int getppid(void);
 int gettid(void);
+int cwdinode(void);
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -42,3 +43,15 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+typedef struct THREAD{
+    int pid;
+    void* stack;
+}THREAD;
+
+THREAD create_thread(void (*fcn)(void *), void *arg, int flags);
+int join_threads(THREAD t);
+int get_pid(void);
+int get_ppid(void);
+int get_tid(void);
+int thread_kill(int, int, int);
+int cwd_inode(void);

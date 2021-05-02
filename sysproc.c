@@ -55,6 +55,12 @@ sys_gettid(void)
 }
 
 int
+sys_cwdinode(void)
+{
+  return cwdinode();
+}
+
+int
 sys_sbrk(void)
 {
   int addr;

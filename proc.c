@@ -168,7 +168,7 @@ growproc(int n)
   uint sz;
   struct proc *curproc = myproc();
   // Rhugaved changes
-  struct proc *p;
+  // struct proc *p;
 
   sz = curproc->sz;
   if(n > 0){
@@ -182,11 +182,11 @@ growproc(int n)
   //Rhugaved Changes
   // Change the size variable of all children threads
   // depending upon the flags
-  for(p = ptable.proc; p<&ptable.proc[NPROC]; p++){
-    if(p->pthread == curproc){
-      p->sz = sz;
-    }
-  }
+  // for(p = ptable.proc; p<&ptable.proc[NPROC]; p++){
+  //   if(p->pthread == curproc){
+  //     p->sz = sz;
+  //   }
+  // }
 
   curproc->sz = sz;
   switchuvm(curproc);
@@ -268,17 +268,17 @@ clone(void(*fcn)(void*), void* arg, void* stack_add, int flags)
   else
     newthread->CLONE_FS = 0;
   if (flags & (1 << (3 - 1)))
-    newthread->CLONE_PARENT = 1;
-  else
-    newthread->CLONE_PARENT = 0;
-  if (flags & (1 << (4 - 1)))
     newthread->CLONE_VM = 1;
   else
     newthread->CLONE_VM = 0;
-  if (flags & (1 << (5 - 1)))
+  if (flags & (1 << (4 - 1)))
     newthread->CLONE_THREAD = 1;
   else
     newthread->CLONE_THREAD = 0;
+  if (flags & (1 << (5 - 1)))
+    newthread->CLONE_PARENT = 1;
+  else
+    newthread->CLONE_PARENT = 0;
 
   // parent here is the group leader aka main process
   // Handling CLONE_PARENT
@@ -341,6 +341,16 @@ clone(void(*fcn)(void*), void* arg, void* stack_add, int flags)
         newthread->ofile[i] = filedup(curproc->ofile[i]);
   }
   else{
+    for(i = 0; i < NPROC; i++) {
+      if(newthread->clone_file_share[i] == 0) {
+        newthread->clone_file_share[i] = curproc;
+      }
+    }
+    for(i = 0; i < NPROC; i++) {
+      if(curproc->clone_file_share[i] == 0) {
+        curproc->clone_file_share[i] = newthread;
+      }
+    }
     // newthread->ofile = curproc->ofile;
     for(i = 0; i < NOFILE; i++)
       if(curproc->ofile[i])
@@ -350,8 +360,19 @@ clone(void(*fcn)(void*), void* arg, void* stack_add, int flags)
   // Handling CLONE_FS
   if (newthread->CLONE_FS == 0)
     newthread->cwd = idup(curproc->cwd);
-  else
+  else{
+    for(i = 0; i < NPROC; i++) {
+      if(newthread->clone_fs_share[i] == 0) {
+        newthread->clone_fs_share[i] = curproc;
+      }
+    }
+    for(i = 0; i < NPROC; i++) {
+      if(curproc->clone_fs_share[i] == 0) {
+        curproc->clone_fs_share[i] = newthread;
+      }
+    }
     newthread->cwd = curproc->cwd;
+  }
 
   safestrcpy(newthread->name, curproc->name, sizeof(curproc->name));
 
@@ -400,32 +421,87 @@ exit(void)
 {
   struct proc *curproc = myproc();
   struct proc *p;
-  int fd;
+  int fd, i, j;
 
   if(curproc == initproc)
     panic("init exiting");
 
+  // Handling filesharing in threads
+  for(i = 0; i < NPROC; i++) {
+    if(curproc->clone_file_share[i] != 0) {
+      p = curproc->clone_file_share[i];
+      for(j = 0; j < NPROC; j++) {
+        if(p->clone_file_share[j] == curproc) {
+          p->clone_file_share[j] = 0;
+          break;
+        }
+      }
+      curproc->clone_file_share[i] = 0;
+    }
+  }
+
+  // Handling file systems in threads
+  for(i = 0; i < NPROC; i++) {
+    if(curproc->clone_fs_share[i] != 0) {
+      p = curproc->clone_fs_share[i];
+      for(j = 0; j < NPROC; j++) {
+        if(p->clone_fs_share[j] == curproc) {
+          p->clone_fs_share[j] = 0;
+          break;
+        }
+      }
+      curproc->clone_fs_share[i] = 0;
+    }
+  }
+
   // Close all open files.
   // RHugaved Edit begins
   // But only for processes not for threads
-  if(curproc->is_thread == 0){
+  if(curproc->CLONE_FILES == 0){
     for(fd = 0; fd < NOFILE; fd++){
       if(curproc->ofile[fd]){
         fileclose(curproc->ofile[fd]);
         curproc->ofile[fd] = 0;
       }
     }
+  } 
+  else{
+    for(fd = 0; fd < NOFILE; fd++){
+      if(curproc->ofile[fd]){
+        // fileclose(curproc->ofile[fd]);
+        curproc->ofile[fd] = 0;
+      }
+    }
   }
 
-  begin_op();
-  iput(curproc->cwd);
-  end_op();
-  curproc->cwd = 0;
+  if(curproc->CLONE_FS == 0){
+    begin_op();
+    iput(curproc->cwd);
+    end_op();
+    curproc->cwd = 0;
+    } 
+    else{
+    curproc->cwd = 0;
+  }
+  
 
   acquire(&ptable.lock);
 
   // Parent might be sleeping in wait().
-  wakeup1(curproc->parent);
+  int flag = 0;
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->wait_for == curproc->pid){
+      flag = 1;
+      // cprintf("Exit: %d", p->wait_for);
+      wakeup1(p);
+    }
+  }
+  if(flag == 0){
+    if(curproc->is_thread == 0)
+      wakeup1(curproc->parent);
+    else
+      wakeup1(curproc->pthread);
+  }
 
   // Pass abandoned children to init.
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
@@ -439,7 +515,7 @@ exit(void)
   }
   // For threads, don't kill any child threads
     if(curproc->is_thread == 1){
-      wakeup1(curproc->parent);
+      // wakeup1(curproc->parent);
     }
     // If the process has child threads, then kill all threads
     else{
@@ -540,6 +616,10 @@ join(int pid)
           release(&ptable.lock);
           return -1;
         }
+        // if (p->is_thread == 0 || p->parent!= curproc || p->tgid != curproc->tgid){
+        //   release(&ptable.lock);
+        //   return -1;
+        // }
       }
       else{
         continue;
@@ -593,6 +673,7 @@ join(int pid)
     }
 
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    curproc->wait_for = pid;
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
   }
 }

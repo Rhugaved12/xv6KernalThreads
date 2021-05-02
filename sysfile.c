@@ -16,6 +16,59 @@
 #include "file.h"
 #include "fcntl.h"
 
+// handling of the clone_fs_share array in struct proc when cwd is changed
+void
+clone_fs_share(struct proc *curproc, struct inode *ip)
+{
+  int i;
+  for(i = 0; i < NPROC; i++) {
+    if(curproc->clone_fs_share[i] != 0 && curproc->clone_fs_share[i] != curproc) {
+      if((curproc->clone_fs_share[i])->cwd == ip) {
+        return;
+      }
+      (curproc->clone_fs_share[i])->cwd = ip;
+      clone_fs_share(curproc->clone_fs_share[i], ip);
+    }
+  }
+  return;
+}
+
+// handle clone_file_share array in struct proc when file opens
+void
+clone_file_share_open(struct proc *curproc, struct file *f, int fd)
+{
+  int i;
+  for(i = 0; i < NPROC; i++) {
+    if(curproc->clone_file_share[i] != 0 && curproc->clone_file_share[i] != curproc) {
+      if((curproc->clone_file_share[i])->ofile[fd] == f) {
+        return;
+      }
+      (curproc->clone_file_share[i])->ofile[fd] = f;
+      clone_file_share_open(curproc->clone_file_share[i], f, fd);
+    }
+  }
+  return;
+}
+
+// handles the clone_file_share array in struct proc when file closes
+void
+clone_file_share_close(struct proc *curproc, int fd)
+{
+  int i;
+  for(i = 0; i < NPROC; i++) {
+    if(curproc->clone_file_share[i] != 0 && curproc->clone_file_share[i] != curproc) {
+      if((curproc->clone_file_share[i])->ofile[fd] == 0) {
+        return;
+      }
+      (curproc->clone_file_share[i])->ofile[fd] = 0;
+      clone_file_share_close(curproc->clone_file_share[i], fd);
+    }
+  }
+  return;
+}
+
+
+
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -46,6 +99,7 @@ fdalloc(struct file *f)
   for(fd = 0; fd < NOFILE; fd++){
     if(curproc->ofile[fd] == 0){
       curproc->ofile[fd] = f;
+      clone_file_share_open(curproc, f, fd);
       return fd;
     }
   }
@@ -100,6 +154,7 @@ sys_close(void)
     return -1;
   myproc()->ofile[fd] = 0;
   fileclose(f);
+  clone_file_share_close(myproc(), fd);
   return 0;
 }
 
@@ -389,6 +444,9 @@ sys_chdir(void)
   iunlock(ip);
   iput(curproc->cwd);
   end_op();
+  if(curproc->cwd != ip) {
+    clone_fs_share(curproc, ip);
+  }
   curproc->cwd = ip;
   return 0;
 }

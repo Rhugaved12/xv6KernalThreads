@@ -54,12 +54,17 @@ struct proc {
   int is_thread;               // To distinguish between a process and a thread
   // int tid;                     // Thread ID
   int tgid;                    // Thread Group ID
-  struct proc *pthread;        // parent thread pointer
+  // struct proc *threadparent;   // Points to leader of a thread group
+
+  int wait_for;                // Pid of the thread this process/thread is waiting for
   int CLONE_FILES;
   int CLONE_FS;
   int CLONE_PARENT;
   int CLONE_VM;
   int CLONE_THREAD;
+  struct proc *clone_file_share[NPROC]; // processes our cur proc shares ofile with
+  struct proc *clone_fs_share[NPROC];   // processes our proc shares fs with 
+  struct proc *pthread;        // parent thread pointer
 };
 
 // Process memory is laid out contiguously, low addresses first:

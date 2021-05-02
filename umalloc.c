@@ -89,17 +89,17 @@ malloc(uint nbytes)
   }
 }
 
-typedef struct THREAD{
-    int pid;
-    void* stack;
-}THREAD;
+// typedef struct THREAD{
+//     int pid;
+//     void* stack;
+// }THREAD;
 
-THREAD create_thread(void (*fcn)(void *), void *arg, int flags);
-int join_threads(THREAD t);
-int get_pid(void);
-int get_ppid(void);
-int get_tid(void);
-int thread_kill(int, int, int);
+// THREAD create_thread(void (*fcn)(void *), void *arg, int flags);
+// int join_threads(THREAD t);
+// int get_pid(void);
+// int get_ppid(void);
+// int get_tid(void);
+// int thread_kill(int, int, int);
 
 
 THREAD create_thread(void(*fcn)(void *), void *arg, int flags){
@@ -138,4 +138,8 @@ int get_tid(void){
 
 int thread_kill(int tgid, int tid, int flags){
   return tkill(tgid, tid, flags);
+}
+
+int cwd_inode(void){
+  return cwdinode();
 }

@@ -25,3 +25,4 @@
 #define SYS_tkill  24
 #define SYS_getppid 25
 #define SYS_gettid 26
+#define SYS_cwdinode 27

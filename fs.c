@@ -271,6 +271,16 @@ iget(uint dev, uint inum)
   return ip;
 }
 
+// Rhugaved Edits
+// Return the inode number of current processes cwd
+int
+cwdinode(void)
+{
+  struct inode *i;
+  i = myproc()->cwd;
+  return i->inum;
+}
+
 // Increment reference count for ip.
 // Returns ip to enable ip = idup(ip1) idiom.
 struct inode*
